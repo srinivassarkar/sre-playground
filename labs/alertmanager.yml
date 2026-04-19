@@ -1,0 +1,50 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: "default"
+  group_by: [alertname, team]
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 1h
+
+  routes:
+    # Critical alerts → would go to PagerDuty in prod
+    # In the lab, just logs to webhook logger so you can see them
+    - match:
+        severity: critical
+      receiver: "critical-webhook"
+
+    # Warning alerts → would go to Slack in prod
+    - match:
+        severity: warning
+      receiver: "warning-webhook"
+
+    # Payment team alerts
+    - match:
+        team: payments
+      receiver: "critical-webhook"
+
+receivers:
+  - name: "default"
+    webhook_configs:
+      - url: "http://alertwebhook:5001/alert"
+        send_resolved: true
+
+  - name: "critical-webhook"
+    webhook_configs:
+      - url: "http://alertwebhook:5001/alert"
+        send_resolved: true
+
+  - name: "warning-webhook"
+    webhook_configs:
+      - url: "http://alertwebhook:5001/alert"
+        send_resolved: true
+
+inhibit_rules:
+  # If AppDown is firing, suppress all other alerts for same job
+  - source_match:
+      alertname: AppDown
+    target_match_re:
+      alertname: "HighErrorRate|HighLatency|PaymentErrors"
+    equal: [job]
