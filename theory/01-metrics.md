@@ -384,7 +384,7 @@ receivers:
 ```
 
 > You can trigger PagerDuty alerts from **both Prometheus and Grafana** — you can eliminate one if needed.
-
+<!-- 
 ---
 
 ## Shell Scripts
@@ -393,7 +393,7 @@ receivers:
 |--------|---------|--------|
 | `server2-setup.sh` | Installs Prometheus + Grafana + Alertmanager + Node Exporter | server-2 |
 | `server1-setup.sh` | Installs Alertmanager + Node Exporter | server-1 |
-
+-->
 ---
 
 ## Prometheus Analogy
