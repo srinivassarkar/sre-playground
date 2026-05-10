@@ -1,0 +1,44 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: lab-webhook
+
+  # Group alerts that share the same alertname together into one notification.
+  # Without this, 10 instances going down sends 10 separate pages.
+  group_by: [alertname, instance]
+
+  group_wait: 10s        # collect related alerts for 10s before first notification
+  group_interval: 1m     # wait 1m before adding new alerts to an existing group
+  repeat_interval: 5m    # re-notify every 5m if alert is still firing
+
+  routes:
+    # Critical alerts are routed separately — in production this is PagerDuty.
+    # In the lab both receivers point to the same webhook so you see everything.
+    - match:
+        severity: critical
+      receiver: lab-webhook-critical
+
+receivers:
+  # Both receivers log to Alertmanager's own stdout.
+  # Watch alerts arrive with: docker logs lab01-alertmanager -f
+  # --log.level=debug in the compose command makes this verbose.
+  - name: lab-webhook
+    webhook_configs:
+      - url: "http://lab01-app:5000/health"   # dummy endpoint — just needs a 200
+        send_resolved: true
+
+  - name: lab-webhook-critical
+    webhook_configs:
+      - url: "http://lab01-app:5000/health"
+        send_resolved: true
+
+inhibit_rules:
+  # When InstanceDown fires for an instance, suppress all other alerts
+  # for that same instance. No point alerting on high CPU or error rate
+  # when the whole server is already down.
+  - source_match:
+      alertname: InstanceDown
+    target_match_re:
+      alertname: ".+"
+    equal: [instance]

@@ -1,0 +1,80 @@
+groups:
+  - name: sre-lab-alerts
+    rules:
+
+      # ── 1. Availability ───────────────────────────────────────────────────
+      # 'up' is Prometheus's built-in scrape health metric.
+      # 1 = target reachable, 0 = target is down or unreachable.
+      # 'for: 30s' means the condition must be true for 30s before firing —
+      # prevents alert flapping on brief network hiccups.
+      - alert: InstanceDown
+        expr: up == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Instance {{ $labels.instance }} is down"
+          description: "Prometheus cannot reach {{ $labels.instance }} for > 30s."
+
+      # ── 2. Error Rate ─────────────────────────────────────────────────────
+      # rate() gives per-second average over the window.
+      # Dividing 500s by all requests gives the error rate fraction.
+      # Multiply by 100 for percentage. Alert if > 10% for 1 minute.
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status="500"}[2m]))
+          /
+          sum(rate(http_requests_total[2m])) * 100 > 10
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Error rate above 10%"
+          description: "Error rate is {{ $value | printf \"%.1f\" }}% — SLO breach likely."
+
+      # ── 3. Latency ────────────────────────────────────────────────────────
+      # histogram_quantile reads the _bucket series created by the Histogram
+      # metric type. 0.99 = p99 — 99% of requests are faster than this value.
+      # If p99 > 1s, 1 in 100 users is waiting more than a second.
+      - alert: HighP99Latency
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le, endpoint)
+          ) > 1.0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p99 latency on {{ $labels.endpoint }}"
+          description: "p99 = {{ $value | printf \"%.2f\" }}s on {{ $labels.endpoint }}"
+
+      # ── 4. CPU Saturation ─────────────────────────────────────────────────
+      # irate() uses only the last 2 data points — reacts fast to spikes.
+      # Better for alerting than rate() which smooths the signal.
+      # 100 minus idle = active CPU usage.
+      - alert: HighCPU
+        expr: |
+          100 - (avg by(instance)
+            (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 70
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU on {{ $labels.instance }}"
+          description: "CPU at {{ $value | printf \"%.1f\" }}% for > 2 minutes."
+
+      # ── 5. Error Budget Burn ──────────────────────────────────────────────
+      # SLO = 99% success rate → error budget = 1%.
+      # If error rate > 1%, we are burning into the budget.
+      # Tracked over 5m here (use 30d windows in production).
+      - alert: ErrorBudgetBurning
+        expr: |
+          sum(rate(http_requests_total{status="500"}[5m]))
+          /
+          sum(rate(http_requests_total[5m])) * 100 > 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Error budget burning"
+          description: "Error rate {{ $value | printf \"%.2f\" }}% exceeds 1% SLO target."

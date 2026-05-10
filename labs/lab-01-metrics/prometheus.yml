@@ -1,0 +1,37 @@
+global:
+  scrape_interval: 15s        # how often Prometheus pulls metrics from targets
+  evaluation_interval: 15s    # how often alert rules are evaluated
+
+# Where to send firing alerts
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+# Alert rule files to load
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+
+  # Prometheus scrapes itself — so you can monitor the monitoring system
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Flask app — exposes custom metrics at /metrics
+  # Labels (env, team) are attached to every metric from this target
+  # They're useful for filtering in PromQL: http_requests_total{env="lab"}
+  - job_name: flask-app
+    static_configs:
+      - targets: ["app:5000"]
+        labels:
+          env: lab
+          team: backend
+
+  # Node exporter — host-level metrics (CPU, memory, disk, network)
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+        labels:
+          env: lab

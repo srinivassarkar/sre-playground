@@ -1,0 +1,134 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Lab 01 — Metrics: Prometheus + Grafana + Alertmanager
+#
+# ZERO PERSISTENCE — no named volumes anywhere.
+# All data lives in tmpfs (RAM). docker compose down leaves nothing on disk.
+#
+# Commands:
+#   docker compose up -d            start the lab
+#   docker compose run k6           run the load test
+#   docker compose logs -f          watch all logs
+#   docker compose down             tear down — zero trace left
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Flask App ──────────────────────────────────────────────────────────────
+  # Same image across all 4 labs. No build step.
+  # OTLP_ENDPOINT is intentionally absent — tracing is off in this lab.
+  # Metrics are always on. Prometheus will scrape :5000/metrics every 15s.
+  app:
+    image: wizardxx7/sre-lab-app:1.0
+    container_name: lab01-app
+    ports:
+      - "5000:5000"
+    networks: [lab]
+    restart: unless-stopped
+
+  # ── Node Exporter ─────────────────────────────────────────────────────────
+  # Exposes host-level metrics: CPU, memory, disk, network.
+  # Reads /proc and /sys from the host via read-only bind mounts.
+  # In production this runs as a systemd service on every EC2 instance.
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: lab01-node-exporter
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    ports:
+      - "9100:9100"
+    networks: [lab]
+
+  # ── Prometheus ────────────────────────────────────────────────────────────
+  # Pulls metrics from targets every 15s (scrape_interval).
+  # Evaluates alert rules every 15s (evaluation_interval).
+  # Fires alerts to Alertmanager when conditions are met.
+  # TSDB lives in tmpfs — retention set to 2h since this is a lab.
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: lab01-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=2h"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    tmpfs:
+      - /prometheus
+    ports:
+      - "9090:9090"
+    networks: [lab]
+    depends_on: [app, node-exporter]
+    restart: unless-stopped
+
+  # ── Alertmanager ──────────────────────────────────────────────────────────
+  # Receives firing alerts from Prometheus.
+  # Groups, deduplicates, and routes them to receivers.
+  # In this lab alerts are logged via --log.level=debug so you can see
+  # them firing with: docker logs lab01-alertmanager
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: lab01-alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--log.level=debug"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    tmpfs:
+      - /alertmanager
+    ports:
+      - "9093:9093"
+    networks: [lab]
+
+  # ── Grafana ───────────────────────────────────────────────────────────────
+  # Visualization layer. Queries Prometheus via PromQL.
+  # Anonymous auth enabled — no login needed in the lab.
+  # Prometheus datasource is auto-provisioned on startup.
+  # You will build the dashboard yourself following the README steps.
+  grafana:
+    image: grafana/grafana:latest
+    container_name: lab01-grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+      - GF_USERS_DEFAULT_THEME=dark
+    volumes:
+      - ./grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    tmpfs:
+      - /var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks: [lab]
+    depends_on: [prometheus]
+    restart: unless-stopped
+
+  # ── k6 Load Generator ─────────────────────────────────────────────────────
+  # Runs only when explicitly called: docker compose run k6
+  # Uses profiles so it never starts with docker compose up.
+  # Hits all endpoints to generate real signal across every metric type.
+  k6:
+    image: grafana/k6:latest
+    container_name: lab01-k6
+    command:
+      - run
+      - --vus=10
+      - --duration=5m
+      - /scripts/load.js
+    volumes:
+      - ./k6/load.js:/scripts/load.js:ro
+    networks: [lab]
+    profiles: [tools]
+    depends_on: [app]
+
+networks:
+  lab:
+    driver: bridge

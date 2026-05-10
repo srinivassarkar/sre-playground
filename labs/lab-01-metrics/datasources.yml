@@ -1,0 +1,15 @@
+# Auto-provisioned on Grafana startup.
+# Prometheus is added as the default datasource so you don't have to
+# click through the UI every time you spin the lab up.
+# Dashboards are built manually in the README steps — better learning
+# than staring at a pre-built one.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
