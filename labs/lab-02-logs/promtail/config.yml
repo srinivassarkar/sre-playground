@@ -1,0 +1,116 @@
+# Promtail configuration for Lab 02
+#
+# Promtail watches Docker's container log files on the host filesystem.
+# Docker writes each container's stdout/stderr to a JSON file at:
+#   /var/lib/docker/containers/<container-id>/<container-id>-json.log
+#
+# Promtail reads those files, extracts container metadata via the Docker
+# socket, adds labels, and pushes each log line to Loki.
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+# Positions file tracks the last-read offset in each log file.
+# This prevents re-sending logs Promtail already shipped when it restarts.
+# Written to tmpfs in this lab — positions reset on restart (fine for a lab,
+# use a persistent path in production).
+positions:
+  filename: /tmp/positions.yaml
+
+# Where to push logs — Loki's HTTP API
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+
+  # ── Docker container log discovery ────────────────────────────────────────
+  # Instead of hardcoding a file path, we use docker_sd_configs to
+  # automatically discover all running containers and watch their log files.
+  # Each container gets labels from its Docker metadata.
+  - job_name: docker-containers
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s        # re-check for new/removed containers every 5s
+        filters:
+          # Only collect logs from containers in our lab network
+          # This avoids collecting Promtail's own logs and other system containers
+          - name: name
+            values: ["lab02-app"]
+
+    relabel_configs:
+      # Use the container name as the 'container' label in Loki
+      # Before relabeling: __meta_docker_container_name = /lab02-app
+      # After:             container = lab02-app
+      - source_labels: [__meta_docker_container_name]
+        regex: "/(.*)"
+        target_label: container
+
+      # Add the Docker image as a label — useful when multiple containers
+      # run the same image
+      - source_labels: [__meta_docker_container_image]
+        target_label: image
+
+      # Set the log file path Promtail will read from
+      - source_labels: [__meta_docker_container_id]
+        target_label: __path__
+        replacement: /var/lib/docker/containers/$1/$1-json.log
+
+      # Add a static 'job' label — this is your primary filter in LogQL
+      - target_label: job
+        replacement: sre-lab-app
+
+      # Add env label for filtering across labs
+      - target_label: env
+        replacement: lab
+
+    # ── Pipeline stages ───────────────────────────────────────────────────
+    # Each log line from Docker is a JSON wrapper:
+    # {"log": "{\"timestamp\":...}\n", "stream": "stdout", "time": "..."}
+    #
+    # We need to unwrap the outer Docker JSON, then parse the inner
+    # application JSON to extract fields like level, endpoint, status.
+    pipeline_stages:
+
+      # Stage 1: Parse the outer Docker log wrapper
+      # Extracts: log (the actual line), stream, time
+      - json:
+          expressions:
+            output: log         # the actual log line is in the 'log' field
+            stream: stream      # stdout or stderr
+
+      # Stage 2: The 'output' field contains our app's JSON log line.
+      # Parse it to extract structured fields we can filter on in Loki.
+      - json:
+          source: output
+          expressions:
+            level:    level
+            endpoint: endpoint
+            status:   status
+            duration: duration
+            trace_id: trace_id
+
+      # Stage 3: Promote extracted fields to Loki labels.
+      # IMPORTANT: Only add high-cardinality-safe fields as labels.
+      # Labels are indexed — adding trace_id as a label would create
+      # millions of unique label values and destroy Loki's performance.
+      # trace_id stays as a log field (searchable via |= or | json),
+      # not a label.
+      - labels:
+          level:      ""        # INFO, WARNING, ERROR — low cardinality, safe
+          endpoint:   ""        # /, /users, /slow etc — low cardinality, safe
+
+      # Stage 4: Use the app's own timestamp instead of Promtail's ingest time.
+      # Without this, log timestamps in Grafana show when Promtail read
+      # the line, not when the app actually logged it.
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+          fallback_formats:
+            - RFC3339
+
+      # Stage 5: Replace the log line content with just the inner app JSON,
+      # stripping the outer Docker wrapper.
+      - output:
+          source: output

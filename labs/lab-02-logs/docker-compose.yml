@@ -1,0 +1,113 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Lab 02 — Logs: Promtail + Loki + Grafana
+#
+# ZERO PERSISTENCE — tmpfs everywhere. docker compose down leaves nothing.
+#
+# How logs flow in this lab:
+#   app (stdout JSON) → Docker log driver → /var/lib/docker/containers/
+#   Promtail watches that path → ships to Loki → Grafana queries Loki
+#
+# Commands:
+#   docker compose up -d            start the lab
+#   docker compose run k6           generate traffic + logs
+#   docker compose logs app -f      watch raw app logs
+#   docker compose down             zero trace left
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Flask App ──────────────────────────────────────────────────────────────
+  # Same image as Lab 01. No OTLP_ENDPOINT — tracing stays off.
+  # The app writes structured JSON logs to stdout on every request.
+  # Docker captures stdout and writes it to the container log path.
+  # Promtail reads from that path and ships to Loki.
+  app:
+    image: wizardxx7/sre-lab-app:1.0
+    container_name: lab02-app
+    ports:
+      - "5000:5000"
+    networks: [lab]
+    restart: unless-stopped
+
+  # ── Promtail ───────────────────────────────────────────────────────────────
+  # The log collection agent. Runs alongside your app in production.
+  # Watches Docker container log files on the host, adds labels,
+  # and pushes log lines to Loki via HTTP POST.
+  #
+  # Key difference from Prometheus: Promtail PUSHES, Prometheus PULLS.
+  #
+  # Needs access to:
+  #   /var/lib/docker/containers  — where Docker writes container logs
+  #   /var/run/docker.sock        — to resolve container metadata (labels, names)
+  promtail:
+    image: grafana/promtail:latest
+    container_name: lab02-promtail
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./promtail/config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    tmpfs:
+      - /tmp                        # promtail writes positions file here
+    networks: [lab]
+    depends_on: [app, loki]
+
+  # ── Loki ──────────────────────────────────────────────────────────────────
+  # Log storage and query backend.
+  # Receives logs from Promtail, indexes by labels only (not full text),
+  # and serves them to Grafana via LogQL queries.
+  #
+  # Loki intentionally does NOT full-text index log content — this keeps
+  # storage cheap. You filter by labels first, then search content.
+  loki:
+    image: grafana/loki:latest
+    container_name: lab02-loki
+    command: -config.file=/etc/loki/config.yml
+    volumes:
+      - ./loki/config.yml:/etc/loki/config.yml:ro
+    tmpfs:
+      - /loki                       # chunks + index + WAL — all in RAM
+    ports:
+      - "3100:3100"
+    networks: [lab]
+
+  # ── Grafana ───────────────────────────────────────────────────────────────
+  # Loki datasource auto-provisioned.
+  # You query logs in Explore using LogQL.
+  grafana:
+    image: grafana/grafana:latest
+    container_name: lab02-grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_USERS_DEFAULT_THEME=dark
+    volumes:
+      - ./grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    tmpfs:
+      - /var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks: [lab]
+    depends_on: [loki]
+
+  # ── k6 Load Generator ─────────────────────────────────────────────────────
+  # docker compose run k6
+  # Generates traffic across all endpoints so every log level
+  # (INFO, WARNING, ERROR) appears in Loki within seconds.
+  k6:
+    image: grafana/k6:latest
+    container_name: lab02-k6
+    command:
+      - run
+      - --vus=10
+      - --duration=5m
+      - /scripts/load.js
+    volumes:
+      - ./k6/load.js:/scripts/load.js:ro
+    networks: [lab]
+    profiles: [tools]
+    depends_on: [app]
+
+networks:
+  lab:
+    driver: bridge
