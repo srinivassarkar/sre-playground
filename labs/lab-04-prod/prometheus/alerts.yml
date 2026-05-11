@@ -1,0 +1,88 @@
+groups:
+  - name: sre-prod-lab-alerts
+    rules:
+
+      # ── Availability ──────────────────────────────────────────────────────
+      - alert: InstanceDown
+        expr: up == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Instance {{ $labels.instance }} is DOWN"
+          description: "Prometheus cannot reach {{ $labels.instance }} for > 30s."
+
+      # ── Error Rate ────────────────────────────────────────────────────────
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status="500"}[2m]))
+          /
+          sum(rate(http_requests_total[2m])) * 100 > 10
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Error rate above 10%"
+          description: "Error rate is {{ $value | printf \"%.1f\" }}% — investigate immediately."
+
+      # ── Latency ───────────────────────────────────────────────────────────
+      - alert: HighP99Latency
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le, endpoint)
+          ) > 1.0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p99 latency > 1s on {{ $labels.endpoint }}"
+          description: "p99 = {{ $value | printf \"%.2f\" }}s on {{ $labels.endpoint }}"
+
+      # ── Saturation ────────────────────────────────────────────────────────
+      - alert: HighCPU
+        expr: |
+          100 - (avg by(instance)
+            (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 70
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU on {{ $labels.instance }}"
+          description: "CPU at {{ $value | printf \"%.1f\" }}% for > 2 minutes."
+
+      # ── Error Budget ──────────────────────────────────────────────────────
+      - alert: ErrorBudgetBurning
+        expr: |
+          sum(rate(http_requests_total{status="500"}[5m]))
+          /
+          sum(rate(http_requests_total[5m])) * 100 > 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Error budget burning — SLO at risk"
+          description: "Error rate {{ $value | printf \"%.2f\" }}% exceeds 1% SLO target."
+
+      # ── SLO Multi-window Burn Rate (fast + slow burn) ─────────────────────
+      # This is the production-grade SLO alert pattern.
+      # Fast burn (1h window > 14x): catches sudden large failures quickly.
+      # Slow burn (6h window > 5x): catches slow leaks that drain budget quietly.
+      # Both must be true to fire — reduces false positives.
+      # The multipliers come from Google's SRE workbook burn rate tables.
+      - alert: SLOBurnRateCritical
+        expr: |
+          (
+            sum(rate(http_requests_total{status="500"}[1h]))
+            / sum(rate(http_requests_total[1h])) > (14 * 0.01)
+          )
+          and
+          (
+            sum(rate(http_requests_total{status="500"}[5m]))
+            / sum(rate(http_requests_total[5m])) > (14 * 0.01)
+          )
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SLO burn rate critical — fast burn detected"
+          description: "Burning error budget 14x faster than allowed. Immediate action required."

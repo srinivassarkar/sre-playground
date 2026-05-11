@@ -1,0 +1,192 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Lab 04 — Production: All 3 Pillars Combined
+#
+# This is the complete observability stack running together:
+#   Metrics  → Prometheus + Alertmanager
+#   Logs     → Promtail + Loki
+#   Traces   → OpenTelemetry + Tempo
+#   Viz      → Grafana (all 3 datasources wired up with correlation)
+#
+# ZERO PERSISTENCE — tmpfs everywhere. docker compose down leaves nothing.
+#
+# The lab runs a realistic incident scenario — read the README first.
+#
+# Commands:
+#   docker compose up -d                    start the full stack
+#   docker compose run k6-normal            baseline healthy traffic
+#   docker compose run k6-incident          trigger the incident
+#   docker compose logs alertmanager -f     watch alerts fire
+#   docker compose down                     zero trace left
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Flask App ──────────────────────────────────────────────────────────────
+  # All 3 pillars active:
+  #   - /metrics endpoint for Prometheus
+  #   - JSON stdout for Promtail
+  #   - OTLP_ENDPOINT set for Tempo
+  app:
+    image: wizardxx7/sre-lab-app:1.0
+    container_name: lab04-app
+    environment:
+      - OTLP_ENDPOINT=http://tempo:4318
+    ports:
+      - "5000:5000"
+    networks: [lab]
+    depends_on: [tempo]
+    restart: unless-stopped
+
+  # ── Node Exporter ─────────────────────────────────────────────────────────
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: lab04-node-exporter
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    ports:
+      - "9100:9100"
+    networks: [lab]
+
+  # ── Prometheus ────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: lab04-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=2h"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    tmpfs:
+      - /prometheus
+    ports:
+      - "9090:9090"
+    networks: [lab]
+    depends_on: [app, node-exporter]
+    restart: unless-stopped
+
+  # ── Alertmanager ──────────────────────────────────────────────────────────
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: lab04-alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--log.level=debug"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    tmpfs:
+      - /alertmanager
+    ports:
+      - "9093:9093"
+    networks: [lab]
+
+  # ── Promtail ──────────────────────────────────────────────────────────────
+  promtail:
+    image: grafana/promtail:latest
+    container_name: lab04-promtail
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./promtail/config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    tmpfs:
+      - /tmp
+    networks: [lab]
+    depends_on: [app, loki]
+
+  # ── Loki ──────────────────────────────────────────────────────────────────
+  loki:
+    image: grafana/loki:latest
+    container_name: lab04-loki
+    command: -config.file=/etc/loki/config.yml
+    volumes:
+      - ./loki/config.yml:/etc/loki/config.yml:ro
+    tmpfs:
+      - /loki
+    ports:
+      - "3100:3100"
+    networks: [lab]
+
+  # ── Tempo ─────────────────────────────────────────────────────────────────
+  tempo:
+    image: grafana/tempo:latest
+    container_name: lab04-tempo
+    command: -config.file=/etc/tempo/config.yml
+    volumes:
+      - ./tempo/config.yml:/etc/tempo/config.yml:ro
+    tmpfs:
+      - /var/tempo
+    ports:
+      - "3200:3200"
+      - "4317:4317"
+      - "4318:4318"
+    networks: [lab]
+
+  # ── Grafana ───────────────────────────────────────────────────────────────
+  # All 3 datasources provisioned + correlation links configured:
+  #   Prometheus → Loki  (metric panel links to log explorer)
+  #   Loki → Tempo       (trace_id in log lines links to waterfall)
+  #   Tempo → Loki       (trace opens matching log lines)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: lab04-grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_USERS_DEFAULT_THEME=dark
+    volumes:
+      - ./grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    tmpfs:
+      - /var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks: [lab]
+    depends_on: [prometheus, loki, tempo]
+    restart: unless-stopped
+
+  # ── k6 — Normal Traffic ───────────────────────────────────────────────────
+  # Establishes a healthy baseline before the incident.
+  # Run first: docker compose run k6-normal
+  k6-normal:
+    image: grafana/k6:latest
+    container_name: lab04-k6-normal
+    command:
+      - run
+      - --vus=5
+      - --duration=3m
+      - /scripts/normal.js
+    volumes:
+      - ./k6/normal.js:/scripts/normal.js:ro
+    networks: [lab]
+    profiles: [tools]
+    depends_on: [app]
+
+  # ── k6 — Incident Traffic ─────────────────────────────────────────────────
+  # Simulates the incident: sudden error spike + latency degradation.
+  # Run after k6-normal: docker compose run k6-incident
+  k6-incident:
+    image: grafana/k6:latest
+    container_name: lab04-k6-incident
+    command:
+      - run
+      - --vus=20
+      - --duration=5m
+      - /scripts/incident.js
+    volumes:
+      - ./k6/incident.js:/scripts/incident.js:ro
+    networks: [lab]
+    profiles: [tools]
+    depends_on: [app]
+
+networks:
+  lab:
+    driver: bridge

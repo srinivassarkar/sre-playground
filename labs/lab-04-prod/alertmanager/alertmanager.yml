@@ -1,0 +1,32 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: lab-default
+  group_by: [alertname, service]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 5m
+
+  routes:
+    - match:
+        severity: critical
+      receiver: lab-critical
+
+receivers:
+  - name: lab-default
+    webhook_configs:
+      - url: "http://app:5000/health"
+        send_resolved: true
+
+  - name: lab-critical
+    webhook_configs:
+      - url: "http://app:5000/health"
+        send_resolved: true
+
+inhibit_rules:
+  - source_match:
+      alertname: InstanceDown
+    target_match_re:
+      alertname: ".+"
+    equal: [instance]

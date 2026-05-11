@@ -1,0 +1,52 @@
+# Tempo configuration for Lab 03
+# Single-node mode — no clustering, no object storage, everything in tmpfs.
+
+server:
+  http_listen_port: 3200        # Grafana queries traces here
+  grpc_listen_port: 9096
+  log_level: warn
+
+# Distributor receives incoming spans from the app via OTLP
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317    # OTLP gRPC — alternative to HTTP
+        http:
+          endpoint: 0.0.0.0:4318    # OTLP HTTP — what the app uses
+
+# Ingester buffers spans in memory before writing to blocks
+ingester:
+  trace_idle_period: 10s            # close trace block if idle for 10s
+  max_block_duration: 5m            # force flush after 5 minutes
+
+# Compactor merges small trace blocks into larger ones
+compactor:
+  compaction:
+    block_retention: 2h             # keep traces for 2 hours — lab only
+
+# Storage — local filesystem (tmpfs in this lab)
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/traces
+    wal:
+      path: /var/tempo/wal          # write-ahead log for durability
+
+# Metrics generator creates RED metrics from trace data
+# Disabled here to keep the lab simple — enabled in Lab 04
+metrics_generator:
+  storage:
+    path: /var/tempo/generator
+
+# Query frontend — handles search requests from Grafana
+query_frontend:
+  search:
+    duration_slo: 5s
+    throughput_bytes_slo: 1.073741824e+09
+
+querier:
+  frontend_worker:
+    frontend_address: localhost:9096

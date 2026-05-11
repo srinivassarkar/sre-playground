@@ -1,0 +1,100 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Lab 03 — Traces: OpenTelemetry + Tempo + Grafana
+#
+# ZERO PERSISTENCE — tmpfs everywhere. docker compose down leaves nothing.
+#
+# How traces flow in this lab:
+#   app creates spans → OTel SDK batches them → OTLP HTTP POST to Tempo :4318
+#   Tempo indexes by trace ID → Grafana queries Tempo → waterfall view
+#
+# The only difference from Lab 01/02: OTLP_ENDPOINT is now set.
+# The same image, the same app — tracing just switches on.
+#
+# Commands:
+#   docker compose up -d            start the lab
+#   docker compose run k6           generate traffic + traces
+#   docker compose down             zero trace left
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Flask App ──────────────────────────────────────────────────────────────
+  # OTLP_ENDPOINT is now set — this is the only change from Labs 01 + 02.
+  # The app's JSONFormatter will now inject real trace_id + span_id into
+  # every log line. The OTel SDK will export spans to Tempo via OTLP HTTP.
+  app:
+    image: wizardxx7/sre-lab-app:1.0
+    container_name: lab03-app
+    environment:
+      - OTLP_ENDPOINT=http://tempo:4318
+    ports:
+      - "5000:5000"
+    networks: [lab]
+    depends_on: [tempo]
+    restart: unless-stopped
+
+  # ── Tempo ─────────────────────────────────────────────────────────────────
+  # Trace storage and query backend.
+  # Receives spans from the app via OTLP (port 4318 HTTP / 4317 gRPC).
+  # Grafana queries Tempo via its HTTP API on port 3200.
+  #
+  # Tempo stores traces differently from Loki/Prometheus:
+  #   - No label index — traces are looked up by Trace ID
+  #   - Supports search by service name, span name, duration, tags
+  #   - Stores spans in blocks on disk (tmpfs here)
+  tempo:
+    image: grafana/tempo:latest
+    container_name: lab03-tempo
+    command: -config.file=/etc/tempo/config.yml
+    volumes:
+      - ./tempo/config.yml:/etc/tempo/config.yml:ro
+    tmpfs:
+      - /var/tempo                  # trace blocks — gone on down
+    ports:
+      - "3200:3200"                 # Grafana queries here
+      - "4317:4317"                 # OTLP gRPC receiver
+      - "4318:4318"                 # OTLP HTTP receiver
+    networks: [lab]
+
+  # ── Grafana ───────────────────────────────────────────────────────────────
+  # Tempo datasource auto-provisioned.
+  # Use Explore → Tempo to search traces by service name or trace ID.
+  # The waterfall view shows every span with timing and nesting.
+  grafana:
+    image: grafana/grafana:latest
+    container_name: lab03-grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_USERS_DEFAULT_THEME=dark
+    volumes:
+      - ./grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    tmpfs:
+      - /var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks: [lab]
+    depends_on: [tempo]
+
+  # ── k6 Load Generator ─────────────────────────────────────────────────────
+  # docker compose run k6
+  # Each request generates a trace. /users and /orders produce nested spans
+  # (parent + child). /slow produces a child span with a long duration —
+  # easy to spot in the waterfall.
+  k6:
+    image: grafana/k6:latest
+    container_name: lab03-k6
+    command:
+      - run
+      - --vus=5
+      - --duration=5m
+      - /scripts/load.js
+    volumes:
+      - ./k6/load.js:/scripts/load.js:ro
+    networks: [lab]
+    profiles: [tools]
+    depends_on: [app]
+
+networks:
+  lab:
+    driver: bridge

@@ -1,0 +1,22 @@
+apiVersion: 1
+
+datasources:
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    isDefault: true
+    editable: true
+    jsonData:
+      # Trace to logs correlation — in Lab 04 (prod) this links a trace
+      # directly to the matching Loki log lines using trace_id.
+      # Wired up here so the config is ready even though Loki isn't
+      # running in this lab.
+      tracesToLogsV2:
+        datasourceUid: ""           # will be set in Lab 04
+      # Search configuration
+      search:
+        hide: false
+      # Node graph shows service dependency map from trace data
+      nodeGraph:
+        enabled: true
