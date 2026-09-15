@@ -1,0 +1,22 @@
+[Unit]
+Description=High-Performance LLM Inference Daemon
+After=network.target nvidia-persistenced.service
+
+[Service]
+Type=simple
+User=practice
+WorkingDirectory=/home/practice/inference
+ExecStart=/home/practice/inference/llama-server \
+  -m /home/practice/inference/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf \
+  -ngl 99 \
+  -c 2048 \
+  -b 512 \
+  --host 127.0.0.1 \
+  --port 8000
+Restart=on-failure
+RestartSec=3s
+LimitNOFILE=65536
+Environment=CUDA_VISIBLE_DEVICES=0
+
+[Install]
+WantedBy=multi-user.target
