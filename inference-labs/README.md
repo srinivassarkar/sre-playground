@@ -7,6 +7,13 @@ Zero fluff. Zero machine learning math. 100% systems engineering, VRAM budgeting
 
 ---
 
+## 📖 Foundation Reading
+Before running the labs, read the zero-math systems glossary:
+👉 **[The Systems Engineer's Guide to AI/ML Fundamentals](00-ai-ml-glossary-for-systems-engineers.md)**  
+*(Covers tokens, context windows, parameters, weights, quantization, KV cache, prefill vs decode, RAG, and function calling).*
+
+---
+
 ## The 4 Labs
 
 | Lab | Focus | What You Learn & Measure |
