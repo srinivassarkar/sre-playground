@@ -15,7 +15,12 @@ sre-playground/
 │   ├── lab-02-logs       # Promtail · Loki · Grafana
 │   ├── lab-03-traces     # OpenTelemetry · Tempo · Grafana
 │   └── lab-04-prod       # All 3 pillars · full incident investigation
-└── interviewQs/
+├── inference-labs/  # 4 hands-on production inference engineering labs
+├── sysde-prep/      # Amazon SysDE / Apple SRE triage drills & cheat sheets
+│   ├── 01-step1-linux-diagnostics-cheat-sheet.md
+│   ├── 02-step2-faang-incident-triage-playbook.md
+│   └── 03-step3-python-systems-scripting-drills.py
+└── interviewQs/     # 65 master SRE interview questions
 ```
 
 ---
@@ -67,3 +72,14 @@ Always `docker compose down` before moving to the next lab.
 
 - Docker + Docker Compose
 - Ports free: `3000` `3100` `3200` `4317` `4318` `5000` `9090` `9093` `9100`
+
+---
+
+## SysDE & SRE Interview Crash Course (`sysde-prep/`)
+
+Targeted preparation modules for **Amazon Systems Development Engineer (SysDE)** and **Apple SRE / Systems** interviews:
+
+1. **[01-step1-linux-diagnostics-cheat-sheet.md](sysde-prep/01-step1-linux-diagnostics-cheat-sheet.md):** The USE method, top 10 diagnostic commands, `/proc` deep dive, signals, and process states (R vs D vs Z).
+2. **[02-step2-faang-incident-triage-playbook.md](sysde-prep/02-step2-faang-incident-triage-playbook.md):** Step-by-step diagnostic trees and interview talk-tracks for the 5 classic FAANG incident scenarios (I/O wait, open deleted files, 502/504 errors, OOM 137, ephemeral port exhaustion).
+3. **[03-step3-python-systems-scripting-drills.py](sysde-prep/03-step3-python-systems-scripting-drills.py):** Standard-library Python automation scripts solving log parsing, latency percentiles, resilient HTTP polling with exponential backoff & jitter, and zero-dependency `/proc` telemetry collection.
+
