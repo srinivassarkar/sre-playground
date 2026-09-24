@@ -12,7 +12,6 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
-
   # ── Flask App ──────────────────────────────────────────────────────────────
   # Same image across all 4 labs. No build step.
   # OTLP_ENDPOINT is intentionally absent — tracing is off in this lab.
@@ -61,7 +60,7 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
     tmpfs:
-      - /prometheus
+      - /prometheus:rw,mode=1777
     ports:
       - "9090:9090"
     networks: [lab]
