@@ -154,22 +154,22 @@ Now in Grafana Explore, try these label selectors one by one and observe the res
 {job="sre-lab-app"}
 ```
 
-**Only ERROR logs:**
+**Only ERROR logs (via query-time JSON parsing):**
 ```logql
-{job="sre-lab-app", level="ERROR"}
+{job="sre-lab-app"} | json | level="ERROR"
 ```
 
 **Only a specific endpoint:**
 ```logql
-{job="sre-lab-app", endpoint="/slow"}
+{job="sre-lab-app"} | json | endpoint="/slow"
 ```
 
 **Multiple label values using regex:**
 ```logql
-{job="sre-lab-app", level=~"ERROR|WARNING"}
+{job="sre-lab-app"} | json | level=~"ERROR|WARNING"
 ```
 
-Notice how filtering by `level` and `endpoint` is instant — these are indexed labels. Now try the same with content filtering (next step) and feel the difference.
+Notice how `{job="sre-lab-app"}` identifies the stream, and `| json` parses the structured JSON log fields on the fly. This keeps Loki stream cardinality low while giving you full filtering power.
 
 > **SRE rule:** Put things you filter on constantly (level, service, env, team) as labels. Put high-cardinality things (trace_id, user_id, request_id) as log fields, not labels.
 
@@ -190,7 +190,7 @@ Notice how filtering by `level` and `endpoint` is instant — these are indexed 
 
 **Exclude lines you don't want:**
 ```logql
-{job="sre-lab-app", level="ERROR"} != "werkzeug"
+{job="sre-lab-app"} | json | level="ERROR" != "werkzeug"
 ```
 
 **Regex — match multiple patterns:**
@@ -228,12 +228,12 @@ Find all 500 responses with a duration over 0.1s:
 
 **Count of ERROR lines per minute:**
 ```logql
-sum(rate({job="sre-lab-app", level="ERROR"}[1m]))
+sum(rate({job="sre-lab-app"} | json | level="ERROR" [1m]))
 ```
 
 **Count errors broken down by endpoint:**
 ```logql
-sum by(endpoint) (rate({job="sre-lab-app", level="ERROR"}[1m]))
+sum by(endpoint) (rate({job="sre-lab-app"} | json | level="ERROR" [1m]))
 ```
 
 **Rate of slow query warnings:**
@@ -268,19 +268,19 @@ This exercise simulates a real investigation.
 
 **Step 2 — Filter for errors in that window:**
 ```logql
-{job="sre-lab-app", level="ERROR"}
+{job="sre-lab-app"} | json | level="ERROR"
 ```
 
 **Step 3 — Identify the error type from the log fields:**
 ```logql
-{job="sre-lab-app", level="ERROR"} | json | line_format "{{.error_type}} on {{.endpoint}}"
+{job="sre-lab-app"} | json | level="ERROR" | line_format "{{.error_type}} on {{.endpoint}}"
 ```
 
 `line_format` lets you reshape the log line output to show only the fields you care about.
 
 **Step 4 — Find how often each error type appears:**
 ```logql
-sum by(endpoint) (count_over_time({job="sre-lab-app", level="ERROR"}[5m]))
+sum by(endpoint) (count_over_time({job="sre-lab-app"} | json | level="ERROR" [5m]))
 ```
 
 **Step 5 — Pinpoint the exact log line.** Click on any log line in Grafana. Expand it. You'll see all parsed JSON fields: `endpoint`, `error_type`, `duration`, `trace_id`.
@@ -384,11 +384,11 @@ Go to **Grafana → Dashboards → New → Add visualisation**, select **Loki**.
 | Panel | Query | Type |
 |-------|-------|------|
 | Live log stream | `{job="sre-lab-app"}` | Logs |
-| Error logs only | `{job="sre-lab-app", level="ERROR"}` | Logs |
-| Error rate over time | `sum(rate({job="sre-lab-app", level="ERROR"}[1m]))` | Time series |
-| Log volume by level | `sum by(level) (rate({job="sre-lab-app"}[1m]))` | Time series |
+| Error logs only | `{job="sre-lab-app"} \| json \| level="ERROR"` | Logs |
+| Error rate over time | `sum(rate({job="sre-lab-app"} \| json \| level="ERROR" [1m]))` | Time series |
+| Log volume by level | `sum by(level) (rate({job="sre-lab-app"} \| json [1m]))` | Time series |
 | Slow queries | `{job="sre-lab-app"} \|= "Slow query detected"` | Logs |
-| Errors by endpoint | `sum by(endpoint) (rate({job="sre-lab-app", level="ERROR"}[1m]))` | Time series |
+| Errors by endpoint | `sum by(endpoint) (rate({job="sre-lab-app"} \| json \| level="ERROR" [1m]))` | Time series |
 
 Save as `Lab 02 — Logs`.
 
@@ -413,14 +413,14 @@ docker ps -a | grep lab02       # empty
 | What | Query |
 |------|-------|
 | All app logs | `{job="sre-lab-app"}` |
-| Error logs | `{job="sre-lab-app", level="ERROR"}` |
+| Error logs | `{job="sre-lab-app"} \| json \| level="ERROR"` |
 | Content search | `{job="sre-lab-app"} \|= "DependencyError"` |
-| Exclude content | `{job="sre-lab-app"} != "werkzeug"` |
+| Exclude content | `{job="sre-lab-app"} \| json \| level="ERROR" != "werkzeug"` |
 | Regex match | `{job="sre-lab-app"} \|~ "timeout\|DependencyError"` |
 | Parse JSON fields | `{job="sre-lab-app"} \| json \| duration > 1.0` |
-| Error rate/min | `sum(rate({job="sre-lab-app", level="ERROR"}[1m]))` |
-| Volume by level | `sum by(level) (rate({job="sre-lab-app"}[1m]))` |
-| Errors by endpoint | `sum by(endpoint) (count_over_time({job="sre-lab-app", level="ERROR"}[5m]))` |
+| Error rate/min | `sum(rate({job="sre-lab-app"} \| json \| level="ERROR" [1m]))` |
+| Volume by level | `sum by(level) (rate({job="sre-lab-app"} \| json [1m]))` |
+| Errors by endpoint | `sum by(endpoint) (count_over_time({job="sre-lab-app"} \| json \| level="ERROR" [5m]))` |
 | Reshape output | `{job="sre-lab-app"} \| json \| line_format "{{.error_type}} on {{.endpoint}}"` |
 
 ---
