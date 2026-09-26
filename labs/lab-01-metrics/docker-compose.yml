@@ -93,15 +93,13 @@ services:
   # Prometheus datasource is auto-provisioned on startup.
   # You will build the dashboard yourself following the README steps.
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:10.4.0
     container_name: lab01-grafana
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
       - GF_SECURITY_ALLOW_EMBEDDING=true
       - GF_USERS_DEFAULT_THEME=dark
-      - GF_PLUGINS_ALLOW_UNSIGNED_PLUGINS=prometheus,tempo
-      - GF_DEFAULT_APP_MODE=development
     volumes:
       - ./grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
     tmpfs:
