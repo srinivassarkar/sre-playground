@@ -100,6 +100,7 @@ services:
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
       - GF_SECURITY_ALLOW_EMBEDDING=true
       - GF_USERS_DEFAULT_THEME=dark
+      - GF_PLUGINS_ALLOW_UNSIGNED_PLUGINS=prometheus,tempo
     volumes:
       - ./grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
     tmpfs:
