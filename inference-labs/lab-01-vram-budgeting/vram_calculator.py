@@ -23,19 +23,19 @@ def calculate_vram(params_b, precision, context_len, concurrency, layers=28, hea
     total_gb = weights_gb + kv_cache_gb + cuda_overhead_gb
 
     print(f"============================================================")
-    print(f"📊 VRAM BUDGET ESTIMATOR: {params_b}B Model ({precision.upper()})")
+    print(f"VRAM BUDGET ESTIMATOR: {params_b}B Model ({precision.upper()})")
     print(f"   Context: {context_len} tokens | Concurrency: {concurrency} users")
     print(f"============================================================")
     print(f"1. Model Weights:      {weights_gb:.2f} GB")
     print(f"2. KV Cache (Dynamic): {kv_cache_gb:.2f} GB")
     print(f"3. CUDA/Scratch Base:  {cuda_overhead_gb:.2f} GB")
     print(f"------------------------------------------------------------")
-    print(f"🎯 Total VRAM Needed:  {total_gb:.2f} GB ({total_gb*1024:.0f} MB)")
+    print(f"Total VRAM Needed:     {total_gb:.2f} GB ({total_gb*1024:.0f} MB)")
     print(f"============================================================")
     if total_gb > 4.0:
-        print("❌ EXCEEDS 4GB VRAM (Will crash a GTX 1050 Ti with CUDA OOM!)")
+        print("[FAIL] EXCEEDS 4GB VRAM (Will crash a GTX 1050 Ti with CUDA OOM!)")
     else:
-        print(f"✅ FITS ON 4GB GPU ({4.0 - total_gb:.2f} GB VRAM headroom remaining)")
+        print(f"[OK] FITS ON 4GB GPU ({4.0 - total_gb:.2f} GB VRAM headroom remaining)")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
