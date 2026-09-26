@@ -43,7 +43,7 @@ services:
   #   - Supports search by service name, span name, duration, tags
   #   - Stores spans in blocks on disk (tmpfs here)
   tempo:
-    image: grafana/tempo:latest
+    image: grafana/tempo:2.4.1
     container_name: lab03-tempo
     user: "0:0"
     command: -config.file=/etc/tempo/config.yml
