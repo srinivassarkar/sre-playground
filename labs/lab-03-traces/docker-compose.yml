@@ -45,11 +45,12 @@ services:
   tempo:
     image: grafana/tempo:latest
     container_name: lab03-tempo
+    user: "0:0"
     command: -config.file=/etc/tempo/config.yml
     volumes:
       - ./tempo/config.yml:/etc/tempo/config.yml:ro
     tmpfs:
-      - /var/tempo                  # trace blocks — gone on down
+      - /var/tempo:rw,mode=1777
     ports:
       - "3200:3200"                 # Grafana queries here
       - "4317:4317"                 # OTLP gRPC receiver
