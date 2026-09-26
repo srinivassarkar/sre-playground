@@ -61,7 +61,7 @@ services:
   # Use Explore → Tempo to search traces by service name or trace ID.
   # The waterfall view shows every span with timing and nesting.
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:10.4.0
     container_name: lab03-grafana
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true

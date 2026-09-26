@@ -75,7 +75,7 @@ services:
   # Loki datasource auto-provisioned.
   # You query logs in Explore using LogQL.
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:10.4.0
     container_name: lab02-grafana
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true

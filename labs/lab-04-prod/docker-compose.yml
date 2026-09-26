@@ -137,7 +137,7 @@ services:
   #   Loki → Tempo       (trace_id in log lines links to waterfall)
   #   Tempo → Loki       (trace opens matching log lines)
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:10.4.0
     container_name: lab04-grafana
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
