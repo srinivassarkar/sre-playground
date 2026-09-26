@@ -66,7 +66,7 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
     tmpfs:
-      - /prometheus
+      - /prometheus:rw,mode=1777
     ports:
       - "9090:9090"
     networks: [lab]
@@ -107,24 +107,26 @@ services:
   loki:
     image: grafana/loki:latest
     container_name: lab04-loki
+    user: "0:0"
     command: -config.file=/etc/loki/config.yml
     volumes:
       - ./loki/config.yml:/etc/loki/config.yml:ro
     tmpfs:
-      - /loki
+      - /loki:rw,mode=1777
     ports:
       - "3100:3100"
     networks: [lab]
 
   # ── Tempo ─────────────────────────────────────────────────────────────────
   tempo:
-    image: grafana/tempo:latest
+    image: grafana/tempo:2.4.1
     container_name: lab04-tempo
+    user: "0:0"
     command: -config.file=/etc/tempo/config.yml
     volumes:
       - ./tempo/config.yml:/etc/tempo/config.yml:ro
     tmpfs:
-      - /var/tempo
+      - /var/tempo:rw,mode=1777
     ports:
       - "3200:3200"
       - "4317:4317"
