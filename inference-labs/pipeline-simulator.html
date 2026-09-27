@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Inference Pipeline — Step by Step</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0b0e12; --panel:#12161c; --panel2:#171c24; --line:#242b35;
+  --text:#d7dde5; --dim:#7a8494; --amber:#e8a33d; --cyan:#4fc9d9; --green:#5fd97a; --red:#e6555a; --violet:#a48ce6;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px);}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-height:100%;}
+.mono{font-family:'JetBrains Mono',monospace;}
+.wrap{max-width:1040px;margin:0 auto;padding:28px 20px 40px;}
+header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px;flex-wrap:wrap;}
+header h1{font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:0.2px;}
+header p{margin:0;color:var(--dim);font-size:13px;max-width:520px;}
+.toggles{display:flex;flex-direction:column;gap:8px;flex-shrink:0;}
+.toggle{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:5px 6px 5px 12px;cursor:pointer;user-select:none;}
+.toggle .knob{width:34px;height:18px;border-radius:10px;background:#232a34;position:relative;transition:background .25s;}
+.toggle .knob::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--dim);transition:all .25s;}
+.toggle.on .knob{background:#3a2c17;}
+.toggle.on .knob::after{left:18px;background:var(--amber);}
+.toggle.on.lvl .knob{background:#16241c;}
+.toggle.on.lvl .knob::after{background:var(--green);}
+.toggle span{font-size:11.5px;color:var(--dim);font-family:'JetBrains Mono',monospace;min-width:118px;}
+.toggle.on span{color:var(--amber);}
+.toggle.on.lvl span{color:var(--green);}
+
+.rail{display:flex;gap:5px;overflow-x:auto;padding:14px 0 18px;margin-bottom:6px;}
+.node{flex:1;min-width:70px;text-align:center;padding:9px 5px;border-radius:6px;background:var(--panel);border:1px solid var(--line);transition:all .35s ease;}
+.node .lbl{font-size:10px;color:var(--dim);font-family:'JetBrains Mono',monospace;}
+.node.active{background:#20140a;border-color:var(--amber);}
+.node.active .lbl{color:var(--amber);}
+.node.done{opacity:.4;}
+.node.ragnode{border-style:dashed;}
+.node.hidden{opacity:.18;}
+.arrow{align-self:center;color:var(--line);font-size:13px;}
+
+.grid{display:grid;grid-template-columns:1.25fr 1fr;gap:16px;}
+@media(max-width:760px){.grid{grid-template-columns:1fr;}}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:20px;}
+.phase{display:inline-block;font-size:10.5px;font-family:'JetBrains Mono',monospace;color:var(--amber);border:1px solid #3a2c17;background:#1c1408;padding:2px 8px;border-radius:4px;margin-bottom:10px;}
+.phase.rag{color:var(--violet);border-color:#2c2140;background:#160f22;}
+.phase.simple{color:var(--green);border-color:#1c3324;background:#0f1c14;}
+.card h2{font-size:17px;margin:0 0 10px;font-weight:600;}
+.card p{font-size:14px;line-height:1.6;color:#c3cad4;margin:0 0 8px;}
+.note{font-size:12.5px;color:var(--dim);border-left:2px solid var(--line);padding-left:10px;margin-top:12px;}
+
+.meterrow{margin-bottom:14px;}
+.meterhead{display:flex;justify-content:space-between;font-size:11.5px;font-family:'JetBrains Mono',monospace;color:var(--dim);margin-bottom:5px;}
+.bar{height:9px;background:#1b2028;border-radius:5px;overflow:hidden;}
+.bar span{display:block;height:100%;transition:width .5s ease;}
+.vram-stack{height:24px;border-radius:6px;overflow:hidden;display:flex;background:#1b2028;border:1px solid var(--line);}
+.vram-stack div{height:100%;transition:width .5s ease;}
+.legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:10.5px;color:var(--dim);font-family:'JetBrains Mono',monospace;}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;}
+
+.sectiontitle{font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--dim);margin:18px 0 10px;border-top:1px solid var(--line);padding-top:14px;}
+.svc{display:grid;grid-template-columns:1fr;gap:10px;}
+.svcrow{opacity:1;transition:opacity .3s;}
+.svcrow.idle{opacity:.35;}
+.svchead{display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:5px;}
+.svchead .name{color:var(--text);}
+.svchead .detail{color:var(--dim);font-family:'JetBrains Mono',monospace;font-size:10.5px;}
+.hide{display:none !important;}
+
+.controls{display:flex;align-items:center;justify-content:space-between;margin-top:22px;gap:12px;flex-wrap:wrap;}
+.dots{display:flex;gap:6px;flex-wrap:wrap;}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--line);cursor:pointer;}
+.dot.on{background:var(--amber);}
+.dot.rag{background:#2c2140;}
+.dot.rag.on{background:var(--violet);}
+button{background:var(--panel2);color:var(--text);border:1px solid var(--line);padding:9px 16px;border-radius:6px;font-size:13px;cursor:pointer;font-family:'Inter',sans-serif;}
+button:hover{border-color:var(--amber);}
+button:disabled{opacity:.35;cursor:default;}
+button:disabled:hover{border-color:var(--line);}
+.stepnum{font-family:'JetBrains Mono',monospace;color:var(--dim);font-size:12px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div>
+    <h1>What actually happens when you hit the API</h1>
+    <p>Click through each stage of an LLM inference request. Switch "Explain for" to see it as an engineer or in plain language, and toggle the RAG path to see the extra services in front of the model.</p>
+  </div>
+  <div class="toggles">
+    <div class="toggle lvl" id="lvlToggle"><span id="lvlLbl">Explain for: Engineer</span><div class="knob"></div></div>
+    <div class="toggle" id="ragToggle"><span id="toggleLbl">RAG path: off</span><div class="knob"></div></div>
+  </div>
+</header>
+
+<div class="rail" id="rail"></div>
+
+<div class="grid">
+  <div class="card">
+    <span class="phase" id="phase"></span>
+    <h2 id="title"></h2>
+    <p id="desc"></p>
+    <div class="note" id="note"></div>
+  </div>
+
+  <div class="card" id="techCard">
+    <div class="meterrow">
+      <div class="meterhead"><span>GPU COMPUTE (LLM SERVER)</span><span id="gpuVal"></span></div>
+      <div class="bar"><span id="gpuBar" style="background:var(--amber)"></span></div>
+    </div>
+    <div class="meterrow">
+      <div class="meterhead"><span>VRAM — <span id="vramTotalLabel"></span></span><span id="vramVal"></span></div>
+      <div class="vram-stack">
+        <div id="vWeights" style="background:var(--dim)"></div>
+        <div id="vKv" style="background:var(--red)"></div>
+        <div id="vAct" style="background:var(--cyan)"></div>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--dim)"></i>weights (static)</span>
+        <span><i style="background:var(--red)"></i>KV cache (dynamic)</span>
+        <span><i style="background:var(--cyan)"></i>activations</span>
+      </div>
+    </div>
+
+    <div class="sectiontitle" id="infraTitle">INFRA ALLOCATIONS — other services in play</div>
+    <div class="svc">
+      <div class="svcrow" id="row-host">
+        <div class="svchead"><span class="name" id="hostName">API Gateway / Host CPU</span><span class="detail" id="hostDetail"></span></div>
+        <div class="bar"><span id="hostBar" style="background:var(--green)"></span></div>
+      </div>
+      <div class="svcrow" id="row-embed">
+        <div class="svchead"><span class="name" id="embedName">Embedding Model</span><span class="detail" id="embedDetail"></span></div>
+        <div class="bar"><span id="embedBar" style="background:var(--violet)"></span></div>
+      </div>
+      <div class="svcrow" id="row-vecdb">
+        <div class="svchead"><span class="name" id="vecdbName">Vector Database</span><span class="detail" id="vecdbDetail"></span></div>
+        <div class="bar"><span id="vecdbBar" style="background:#7d8ce6"></span></div>
+      </div>
+      <div class="svcrow" id="row-net">
+        <div class="svchead"><span class="name" id="netName">Network I/O</span><span class="detail" id="netDetail"></span></div>
+        <div class="bar"><span id="netBar" style="background:var(--cyan)"></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="controls">
+  <button id="prev">← Prev</button>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <span class="stepnum" id="stepnum"></span>
+    <div class="dots" id="dots"></div>
+  </div>
+  <button id="next">Next →</button>
+</div>
+</div>
+
+<script>
+const TOTAL_VRAM = 16;
+const nodeNames = ["Client","Gateway","Embed Query","Vector Search","Merge Ctx","Tokenizer","GPU Prefill","GPU Decode","Stream Out"];
+const simpleNodeNames = ["You","Server","Meaning-finder","Library search","Add notes","Word-splitter","AI reads","AI writes","Answer shown"];
+const ragNodeIdx = [2,3,4];
+
+const allSteps = [
+ { node:0, rag:false, phase:"STARTUP · once", ptag:"", title:"Load weights into VRAM",
+   desc:"Before any request arrives, the LLM server loads model parameters from disk into GPU memory. Fixed, static cost — happens once, sits there for the life of the process.",
+   note:"7B params in FP16 ≈ 14GB. This example server uses 10GB of a 16GB GPU. Every other service below is idle right now.",
+   simple:{ phase:"Getting ready", title:"The AI's knowledge gets loaded up",
+     desc:"Think of the model as a giant recipe book the AI has already memorized. The computer loads that memorized knowledge into its fast working memory so it's ready to think.",
+     note:"This happens once, before anyone even asks a question." },
+   gpu:15, weights:10, kv:0, act:0, host:20, embed:0, vecdb:0, net:5 },
+
+ { node:0, rag:false, phase:"REQUEST · network", ptag:"", title:"Client sends the request",
+   desc:"A user's text hits the API gateway over HTTP. Nothing has touched the GPU or any retrieval service yet — this is pure network + queuing overhead.",
+   note:"If RAG is off, the very next step is straight to the tokenizer.",
+   simple:{ phase:"You ask", title:"You ask a question",
+     desc:"You type something and hit send. Right now it's just traveling over the internet — nothing 'smart' has happened yet.",
+     note:"Just like sending a text message to a friend." },
+   gpu:2, weights:10, kv:0, act:0, host:15, embed:0, vecdb:0, net:70 },
+
+ { node:2, rag:true, phase:"RAG BRANCH · separate service", ptag:"rag", title:"Embedding model encodes the query",
+   desc:"A small, separate model (not your LLM) turns the query text into a vector. It has its own tiny footprint — a few hundred MB, often runs on CPU or a shared small GPU.",
+   note:"The main LLM's VRAM is completely untouched here — this is a different process, sometimes a different machine.",
+   simple:{ phase:"Finding meaning", title:"Turning your question into a shape",
+     desc:"A little helper program converts your words into a kind of numerical fingerprint, so the computer can compare 'meaning' instead of exact words.",
+     note:"This is a small, separate helper — not the main AI." },
+   gpu:8, weights:10, kv:0, act:0, host:10, embed:60, vecdb:0, net:10 },
+
+ { node:3, rag:true, phase:"RAG BRANCH · separate service", ptag:"rag", title:"Vector database searches for matches",
+   desc:"The query vector is compared against millions of pre-computed document vectors to find the closest ones. This is a RAM/CPU or disk-index operation — no relation to the LLM's weights or KV cache.",
+   note:"A slow or oversized vector index shows up as latency here, long before the LLM even sees a prompt.",
+   simple:{ phase:"Searching", title:"Searching a giant library",
+     desc:"That fingerprint gets compared against millions of stored fingerprints from documents, to find the ones that mean something similar to your question.",
+     note:"Like a librarian instantly finding related books for you." },
+   gpu:2, weights:10, kv:0, act:0, host:15, embed:5, vecdb:65, net:15 },
+
+ { node:4, rag:true, phase:"RAG BRANCH · prompt build", ptag:"rag", title:"Retrieved chunks merged into the prompt",
+   desc:"The top-matching passages are stitched in front of the user's question as extra context. The prompt that reaches the LLM is now much longer than what the user typed.",
+   note:"This is the handoff point: RAG's job ends here, the normal LLM pipeline picks up next — just with a fatter prompt.",
+   simple:{ phase:"Adding notes", title:"Handing the AI some sticky notes",
+     desc:"The most relevant snippets found in the library get attached to your question, like sticky notes, before it goes to the AI.",
+     note:"Now the AI has extra information to work with." },
+   gpu:2, weights:10, kv:0, act:0, host:20, embed:0, vecdb:10, net:5 },
+
+ { node:5, rag:false, phase:"REQUEST · CPU", ptag:"", title:"Tokenizer converts text → IDs",
+   desc:"The tokenizer splits the string into subword tokens and maps each to an integer ID. A token isn't reliably '4 characters' — it depends on the model's vocabulary.",
+   note:"Cheap on its own, but with RAG on, the retrieved context adds many more tokens to count against the context window before generation starts.",
+   simple:{ phase:"Chopping words", title:"Breaking your words into pieces",
+     desc:"Your sentence gets chopped into small chunks — not always full words — and turned into numbers, because the AI only understands numbers.",
+     note:"One word can sometimes become several pieces." },
+   gpu:2, weights:10, kv:0, act:0, host:55, embed:0, vecdb:0, net:5 },
+
+ { node:6, rag:false, phase:"REQUEST · GPU", ptag:"", title:"Prefill — process the whole prompt",
+   desc:"All prompt tokens go through the model in parallel in one GPU pass, building the KV cache for every prompt token. With RAG on, this prompt includes the retrieved documents, so it's a bigger prefill.",
+   note:"Time-To-First-Token (TTFT) is measured here. RAG trades a slower prefill for not having to retrain the model at all.",
+   simple:{ phase:"Reading", title:"The AI reads everything at once",
+     desc:"The computer reads your whole question (and any sticky notes attached) in one big gulp, getting ready to start answering.",
+     note:"The bigger the question, the longer this takes." },
+   gpu:90, weights:10, kv:2.6, act:1.5, host:10, embed:0, vecdb:0, net:5 },
+
+ { node:6, rag:false, phase:"METRIC · TTFT", ptag:"", title:"First token is emitted",
+   desc:"The moment prefill finishes, the model produces its first output token — the number users actually feel as latency.",
+   note:"Fast TTFT and fast token-by-token speed are two separate characteristics you tune independently.",
+   simple:{ phase:"First word", title:"The first word appears",
+     desc:"The AI produces its very first word — this is the moment you actually notice as 'it started responding.'",
+     note:"Everything before this was invisible waiting." },
+   gpu:60, weights:10, kv:2.6, act:1.0, host:5, embed:0, vecdb:0, net:10 },
+
+ { node:7, rag:false, phase:"REQUEST · GPU", ptag:"", title:"Decode — one token at a time",
+   desc:"Autoregressive loop: predict a token, append it, feed it back in, predict the next. Each step reuses cached attention state but still grows the KV cache with every new token.",
+   note:"Usually memory-bandwidth bound, not compute bound. Tokens-per-second and inter-token latency are measured here.",
+   simple:{ phase:"Writing", title:"Writing one word at a time",
+     desc:"The AI guesses the next word, then the next, then the next — like autocomplete, but really good at it.",
+     note:"It genuinely doesn't know the whole answer before it starts typing it." },
+   gpu:55, weights:10, kv:3.4, act:0.8, host:10, embed:0, vecdb:0, net:8 },
+
+ { node:7, rag:false, phase:"CAPACITY RISK", ptag:"", title:"KV cache grows across concurrent users",
+   desc:"Every simultaneous conversation holds its own KV cache. Weights are one fixed block, but KV cache scales with batch size × sequence length — enough concurrent long conversations and there's nowhere left to allocate.",
+   note:"\"Model fits, GPU has headroom\" ≠ \"it survives production load.\" Result: CUDA out-of-memory — a GPU allocation failure, not a Linux OOM-kill.",
+   simple:{ phase:"Too crowded", title:"Too many conversations at once",
+     desc:"If lots of people chat with the AI at the same time, the computer has to remember all their conversations simultaneously — and it can run out of room.",
+     note:"Like a restaurant with too many tables and not enough staff." },
+   gpu:70, weights:10, kv:5.6, act:0.5, host:5, embed:0, vecdb:0, net:5 },
+
+ { node:8, rag:false, phase:"REQUEST · network", ptag:"", title:"Stream tokens back to the client",
+   desc:"Each generated token streams to the client as it's produced. Once the request finishes, its slice of KV cache frees back into the pool for the next request.",
+   note:"This is why chat UIs render word-by-word — it's literally how tokens are produced, RAG or not.",
+   simple:{ phase:"Answer appears", title:"The answer shows up as it's written",
+     desc:"Instead of waiting for the whole answer, you see each word pop up as soon as it's ready.",
+     note:"That's why answers appear gradually instead of all at once." },
+   gpu:10, weights:10, kv:3.2, act:0.3, host:8, embed:0, vecdb:0, net:65 },
+];
+
+let ragOn = false;
+let simpleMode = false;
+let i = 0;
+let visible = [];
+
+const svcNames = {
+  tech:{ host:"API Gateway / Host CPU", embed:"Embedding Model", vecdb:"Vector Database", net:"Network I/O", infra:"INFRA ALLOCATIONS — other services in play" },
+  simple:{ host:"Front desk / server", embed:"Meaning-finder helper", vecdb:"Library search", net:"Internet connection", infra:"WHO ELSE IS WORKING RIGHT NOW" }
+};
+
+function computeVisible(){
+  visible = allSteps.filter(s => !s.rag || ragOn);
+}
+
+function buildRail(){
+  const rail = document.getElementById('rail');
+  rail.innerHTML = '';
+  const names = simpleMode ? simpleNodeNames : nodeNames;
+  names.forEach((n,idx)=>{
+    if(idx>0){ const a=document.createElement('div'); a.className='arrow'; a.textContent='›'; rail.appendChild(a); }
+    const d=document.createElement('div'); d.className='node'+(ragNodeIdx.includes(idx)?' ragnode':''); d.id='node'+idx;
+    d.innerHTML = `<div class="lbl mono">${n}</div>`;
+    rail.appendChild(d);
+  });
+}
+
+function pct(v){ return (v/TOTAL_VRAM*100).toFixed(1)+'%'; }
+
+function render(){
+  const s = visible[i];
+  const sn = svcNames[simpleMode?'simple':'tech'];
+
+  const phaseTxt = simpleMode ? s.simple.phase : s.phase;
+  document.getElementById('phase').textContent = phaseTxt;
+  document.getElementById('phase').className = 'phase'+(s.ptag?' '+s.ptag:'')+(simpleMode?' simple':'');
+  document.getElementById('title').textContent = simpleMode ? s.simple.title : s.title;
+  document.getElementById('desc').textContent = simpleMode ? s.simple.desc : s.desc;
+  document.getElementById('note').textContent = simpleMode ? s.simple.note : s.note;
+
+  const names = simpleMode ? simpleNodeNames : nodeNames;
+  names.forEach((_,idx)=>{
+    const el = document.getElementById('node'+idx);
+    const isRagNode = ragNodeIdx.includes(idx);
+    el.classList.toggle('hidden', isRagNode && !ragOn);
+    el.classList.toggle('active', idx===s.node);
+    el.classList.toggle('done', idx<s.node && !(isRagNode && !ragOn));
+  });
+
+  document.getElementById('gpuBar').style.width = s.gpu+'%';
+  document.getElementById('gpuVal').textContent = s.gpu+'%';
+
+  const used = s.weights + s.kv + s.act;
+  document.getElementById('vWeights').style.width = pct(s.weights);
+  document.getElementById('vKv').style.width = pct(s.kv);
+  document.getElementById('vAct').style.width = pct(s.act);
+  document.getElementById('vramTotalLabel').textContent = TOTAL_VRAM+'GB total';
+  document.getElementById('vramVal').textContent = used.toFixed(1)+'GB used';
+
+  document.getElementById('infraTitle').textContent = sn.infra;
+  document.getElementById('hostName').textContent = sn.host;
+  document.getElementById('embedName').textContent = sn.embed;
+  document.getElementById('vecdbName').textContent = sn.vecdb;
+  document.getElementById('netName').textContent = sn.net;
+
+  setSvc('host', s.host, s.host>=40?(simpleMode?'busy':'busy'):(s.host>0?'light':'idle'));
+  setSvc('embed', s.embed, s.embed>=30?(simpleMode?'working':'encoding'):(s.embed>0?'light':'idle'));
+  setSvc('vecdb', s.vecdb, s.vecdb>=30?(simpleMode?'searching':'scanning index'):(s.vecdb>0?'light':'idle'));
+  setSvc('net', s.net, s.net>=40?(simpleMode?'sending data':'transferring'):(s.net>0?'light':'idle'));
+
+  document.getElementById('stepnum').textContent = 'STEP '+(i+1)+' / '+visible.length;
+  document.getElementById('prev').disabled = i===0;
+  document.getElementById('next').disabled = i===visible.length-1;
+
+  const dots = document.getElementById('dots');
+  dots.innerHTML='';
+  visible.forEach((st,idx)=>{
+    const d=document.createElement('div'); d.className='dot'+(idx===i?' on':'')+(st.rag?' rag':'');
+    d.onclick=()=>{ i=idx; render(); };
+    dots.appendChild(d);
+  });
+}
+
+function setSvc(key, val, label){
+  document.getElementById(key+'Bar').style.width = val+'%';
+  document.getElementById(key+'Detail').textContent = val>0 ? (val+'% · '+label) : 'idle';
+  document.getElementById('row-'+key)?.classList.toggle('idle', val===0);
+}
+
+document.getElementById('prev').onclick = ()=>{ if(i>0){ i--; render(); } };
+document.getElementById('next').onclick = ()=>{ if(i<visible.length-1){ i++; render(); } };
+document.addEventListener('keydown', e=>{
+  if(e.key==='ArrowRight') document.getElementById('next').click();
+  if(e.key==='ArrowLeft') document.getElementById('prev').click();
+});
+
+document.getElementById('ragToggle').onclick = ()=>{
+  ragOn = !ragOn;
+  document.getElementById('ragToggle').classList.toggle('on', ragOn);
+  document.getElementById('toggleLbl').textContent = 'RAG path: '+(ragOn?'on':'off');
+  computeVisible();
+  i = 0;
+  buildRail();
+  render();
+};
+
+document.getElementById('lvlToggle').onclick = ()=>{
+  simpleMode = !simpleMode;
+  document.getElementById('lvlToggle').classList.toggle('on', simpleMode);
+  document.getElementById('lvlLbl').textContent = 'Explain for: '+(simpleMode?'No background':'Engineer');
+  buildRail();
+  render();
+};
+
+buildRail();
+computeVisible();
+render();
+</script>
+</body>
+</html>

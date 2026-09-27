@@ -7,9 +7,19 @@ Zero fluff. Zero machine learning math. 100% systems engineering, VRAM budgeting
 
 ---
 
-## 📖 Foundation Reading
+## Interactive Inference Pipeline Simulator
+
+Visual step-by-step interactive simulator illustrating the full token lifecycle from user prompt to streaming SSE response (Tokenization -> Prefill -> KV Cache Allocation -> Matrix Multiplication -> Logits / Sampling -> Decode Loop -> SSE Streaming):
+
+- **Live Web Preview (Instant):** [Open Online Simulator](https://htmlpreview.github.io/?https://github.com/srinivassarkar/sre-playground/blob/main/inference-labs/pipeline-simulator.html)
+- **Alternative CDN Mirror:** [Open via Raw.Githack](https://raw.githack.com/srinivassarkar/sre-playground/main/inference-labs/pipeline-simulator.html)
+- **Local File:** [`pipeline-simulator.html`](pipeline-simulator.html) (Single-file HTML/CSS/JS, zero dependencies)
+
+---
+
+## Foundation Reading
 Before running the labs, read the zero-math systems glossary:
-👉 **[The Systems Engineer's Guide to AI/ML Fundamentals](00-ai-ml-glossary-for-systems-engineers.md)**  
+- **[The Systems Engineer's Guide to AI/ML Fundamentals](00-ai-ml-glossary-for-systems-engineers.md)**  
 *(Covers tokens, context windows, parameters, weights, quantization, KV cache, prefill vs decode, RAG, and function calling).*
 
 ---
@@ -38,6 +48,7 @@ This suite is designed to be executed across:
 
 ```
 inference-labs/
+├── pipeline-simulator.html    # Interactive step-by-step pipeline visualizer
 ├── lab-01-vram-budgeting/       # Formulas, memory allocation, OOM reproduction
 ├── lab-02-serving-daemon/       # Daemon configs, layer offloading, systemd & PM2
 ├── lab-03-streaming-telemetry/  # Async Python streaming profiler, TTFT/TPS metrics
