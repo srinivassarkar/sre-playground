@@ -25,7 +25,7 @@ sre-playground/
 
 ---
 
-## Labs
+## Level 1: Production Observability Labs
 
 | Lab | Stack | What you learn |
 |-----|-------|---------------|
@@ -35,6 +35,19 @@ sre-playground/
 | 04 — Prod | All 3 combined | Full incident loop: alert → metrics → logs → traces |
 
 Each lab has a `README.md` that walks you through 5–7 SRE scenarios with what, why, and how for every step.
+
+---
+
+## Level 2: AI Infrastructure & LLM Inference Labs (`inference-labs/`)
+
+Blueprint: **[Level-2: AI Infrastructure & Systems Engineering Blueprint](inference-labs/LEVEL-2-AI-INFRA-BLUEPRINT.md)**
+
+| Lab | Focus | Silicon & Systems Verification |
+|-----|-------|--------------------------------|
+| 01 — VRAM Budgeting | Memory Topology & GQA | Predicted 1,412 MiB $\implies$ measured 1,418 MiB on GTX 1050 Ti (99.6% accuracy). Measured +836 MiB context expansion at 32K context. |
+| 02 — Serving Daemons | Supervisors & Layer Offload | Standardized on `/v1/chat/completions`. Proved automated `systemd` recovery from `kill -9` in 3 seconds. |
+| 03 — Streaming Telemetry | Latency Profiling (TTFT vs TPOT) | Dissected cold TTFT (1,619 ms) vs warm TTFT (152 ms). Discovered Head-of-Line prefill queue inflation under 8 concurrent streams. |
+| 04 — Streaming Proxy | Edge Ingress & Nginx Tuning | Bypassed the 10-second proxy buffering hang using `proxy_buffering off;` and tuned read timeouts for zero 504s. |
 
 ---
 

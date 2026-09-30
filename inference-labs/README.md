@@ -15,6 +15,10 @@ Visual step-by-step interactive simulator illustrating the full token lifecycle 
 - **Alternative CDN Mirror:** [Open via Raw.Githack](https://raw.githack.com/srinivassarkar/sre-playground/main/inference-labs/pipeline-simulator.html)
 - **Local File:** [`pipeline-simulator.html`](pipeline-simulator.html) (Single-file HTML/CSS/JS, zero dependencies)
 
+## Strategic Blueprint
+- **[Level-2: AI Infrastructure & Systems Engineering Blueprint](LEVEL-2-AI-INFRA-BLUEPRINT.md)**  
+*(Dual-hardware roadmap: Linux GTX 1050 Ti CUDA vs Apple Silicon M3 Ultra 256GB MLX, 2-track weekday/weekend operating plan).*
+
 ---
 
 ## Foundation Reading
