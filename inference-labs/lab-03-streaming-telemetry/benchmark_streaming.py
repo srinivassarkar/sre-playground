@@ -5,13 +5,13 @@ import statistics
 import argparse
 import httpx
 
-URL = "http://localhost:8000/v1/chat/completions"
-MODEL = "qwen2.5-coder:1.5b"
+DEFAULT_URL = "http://localhost:11434/v1/chat/completions"
+DEFAULT_MODEL = "qwen2.5:1.5b"
 PROMPT = "Explain the difference between TCP TIME_WAIT and CLOSE_WAIT in three crisp bullet points."
 
-async def send_stream(client, user_id, max_tokens=100):
+async def send_stream(client, user_id, url=DEFAULT_URL, model=DEFAULT_MODEL, max_tokens=100):
     payload = {
-        "model": MODEL,
+        "model": model,
         "messages": [{"role": "user", "content": PROMPT}],
         "stream": True,
         "max_tokens": max_tokens,
@@ -24,7 +24,7 @@ async def send_stream(client, user_id, max_tokens=100):
     total_tokens = 0
 
     try:
-        async with client.stream("POST", URL, json=payload, timeout=60.0) as resp:
+        async with client.stream("POST", url, json=payload, timeout=60.0) as resp:
             if resp.status_code != 200:
                 print(f"[User {user_id}] HTTP {resp.status_code}")
                 return None
@@ -75,19 +75,20 @@ async def send_stream(client, user_id, max_tokens=100):
         print(f"[User {user_id}] Error: {e}")
         return None
 
-async def main(concurrency):
+async def main(concurrency, url=DEFAULT_URL, model=DEFAULT_MODEL):
     print(f"============================================================")
-    print(f"⚡ INFERENCE STREAMING BENCHMARK: Concurrency = {concurrency}")
+    print(f"INFERENCE STREAMING BENCHMARK: Concurrency = {concurrency}")
+    print(f"Target: {url} | Model: {model}")
     print(f"============================================================")
     
     limits = httpx.Limits(max_keepalive_connections=concurrency, max_connections=concurrency*2)
     async with httpx.AsyncClient(limits=limits) as client:
-        tasks = [send_stream(client, i) for i in range(concurrency)]
+        tasks = [send_stream(client, i, url=url, model=model) for i in range(concurrency)]
         results = await asyncio.gather(*tasks)
 
     valid = [r for r in results if r is not None]
     if not valid:
-        print("❌ All requests failed. Is your inference server running on port 8000?")
+        print(f"[ERROR] All requests failed. Is your inference server running at {url}?")
         return
 
     ttfts = sorted([r["ttft_ms"] for r in valid])
@@ -112,7 +113,9 @@ async def main(concurrency):
     print(f"============================================================\n")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--concurrency", type=int, default=5)
+    parser = argparse.ArgumentParser(description="Async Streaming Inference Benchmark (TTFT vs TPOT)")
+    parser.add_argument("--concurrency", type=int, default=1, help="Concurrent streaming requests")
+    parser.add_argument("--url", type=str, default=DEFAULT_URL, help="OpenAI-compatible chat completions URL")
+    parser.add_argument("--model", type=str, default=DEFAULT_MODEL, help="Model name")
     args = parser.parse_args()
-    asyncio.run(main(args.concurrency))
+    asyncio.run(main(args.concurrency, url=args.url, model=args.model))

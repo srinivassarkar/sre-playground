@@ -41,12 +41,12 @@ proxy_send_timeout 300s;
    ```bash
    nginx -c $(pwd)/nginx.conf
    ```
-2. Test streaming directly through Nginx on port `80`:
+2. Test streaming directly through Nginx on port `8080`:
    ```bash
-   curl -N http://localhost/v1/chat/completions \
+   curl -N http://localhost:8080/v1/chat/completions \
      -H "Content-Type: application/json" \
      -d '{
-       "model": "qwen2.5-coder:1.5b",
+       "model": "qwen2.5:1.5b",
        "messages": [{"role": "user", "content": "Count from 1 to 20 slowly."}],
        "stream": true
      }'
