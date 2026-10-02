@@ -1,7 +1,4 @@
 # SRE & Observability Master Interview Playbook (65 Questions & Model Answers)
-
-**Author:** Srinivas Sarkar  
-**Target:** Production SRE, DevOps, and Platform Engineering Roles (Series B–D Startups & Enterprise Platforms)  
 **Scope:** Covers the complete telemetry stack (Metrics, Logs, Traces, Alerts, Incidents, and Reliability Architecture).
 
 ---
