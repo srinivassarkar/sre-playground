@@ -193,9 +193,15 @@ A **ClusterIP is not a physical network interface**. You cannot ping a ClusterIP
 
 | Mode | Architecture | Algorithmic Complexity | Production Scaling Limit |
 | :--- | :--- | :--- | :--- |
-| **iptables** (Default) | Sequential packet-filtering chains; random probability matching | $O(N)$ linear rule evaluation | Degrades significantly past 5,000 Services; full rule-table reloads stall packet flow |
+| **iptables** (Default) | Sequential packet-filtering chains; random probability matching | $O(N)$ linear rule evaluation | Degrades significantly past 5,000 Services; full rule-table reloads stall packet flow and trigger netfilter conntrack race conditions |
 | **IPVS** (IP Virtual Server) | Kernel Layer 4 load balancer using in-memory hash tables | $O(1)$ constant time lookup | Scales to 50,000+ Services; supports Least-Connections and Round-Robin |
-| **eBPF (Cilium)** | Bypasses netfilter; replaces kube-proxy with eBPF programs loaded into kernel sockets | $O(1)$ socket-level translation | Maximum performance; eliminates conntrack overhead and iptables latency completely |
+| **eBPF (Cilium)** | Bypasses netfilter; replaces kube-proxy with eBPF programs loaded directly into socket layers (`sockops` and `tc`) | $O(1)$ socket-level translation | Maximum performance; eliminates conntrack overhead, translates destination IP at the socket level before the packet reaches the TCP stack |
+
+#### The eBPF / Cilium Architectural Leap
+In standard iptables, every TCP packet traverses multiple netfilter hooks (`PREROUTING`, `POSTROUTING`), chewing up CPU and risking connection drops under high churn. With Cilium eBPF:
+1. When a container calls `connect()`, a BPF program hooks the socket operation (`sockops`).
+2. The virtual ClusterIP is translated directly to the target Pod IP **inside the socket layer before the packet even hits the network stack**.
+3. Result: Zero iptables rules, zero conntrack table bloat, and up to 30% lower network latency for microservice mesh traffic.
 
 ---
 
@@ -492,6 +498,14 @@ kubectl -n kube-system logs -l k8s-app=kube-dns --tail=100
 ### How They Relate
 An Ingress resource does not handle traffic directly. An **Ingress Controller** (e.g. Nginx, Traefik) runs as a Deployment inside the cluster and is exposed to the outside world via **one single `type: LoadBalancer` Service**. Ingress is the smart Layer 7 routing brain sitting behind one Layer 4 cloud balancer.
 
+### Modern Evolution: Ingress vs. Gateway API
+In modern production clusters (Kubernetes 1.25+ GA), **Gateway API** is actively superseding the legacy Ingress resource.
+* **The Ingress Flaw:** The Ingress API was too simplistic. Real-world features (header rewrites, canary traffic splitting, rate limiting) required hacky, vendor-specific annotations (`nginx.ingress.kubernetes.io/...`) that broke portability across cloud providers.
+* **The Gateway API Solution:** Introduces role-oriented architectural separation:
+  1. **Infrastructure Provider / Cluster Operator:** Configures `GatewayClass` and `Gateway` (declares the load balancer, IP address, and TLS certificates).
+  2. **Application Developer:** Configures `HTTPRoute` or `GRPCRoute` (declares paths, weighted traffic splitting for canaries, and header routing).
+  3. **Cross-Namespace Routing:** Allows an `HTTPRoute` in the `payments` namespace to bind cleanly to a shared `Gateway` in the `infra` namespace without violating RBAC boundaries.
+
 ---
 
 ## 8.22 Service Reachable via ClusterIP but Fails with Ingress
@@ -654,6 +668,7 @@ When a node runs out of physical memory, the Kubelet evicts Pods in reverse QoS 
 ### Compressible vs Incompressible Resources
 * **CPU is Compressible:** When a container exceeds its CPU limit, the Linux kernel **Completely Fair Scheduler (CFS) throttles** the container by denying CPU time slices (`cfs_quota_us`). The process runs slower, but does **not die**.
 * **Memory is Incompressible:** The kernel cannot compress physical memory. When a container exceeds its memory limit, the Linux **cgroup OOM Killer terminates the process immediately with `SIGKILL 9` (Exit Code 137)**.
+* **Ephemeral Storage is Incompressible (Disk Space):** Pods write logs, scratch files, and `emptyDir` volumes to the node's local root disk. If a Pod exceeds its `limits.ephemeral-storage`, the **Kubelet actively evicts the Pod** with status `Evicted` and reason `The node was low on resource: ephemeral-storage`. Unlike Memory (killed instantly by the kernel), storage eviction is detected asynchronously during Kubelet disk polling cycles.
 
 ### The `oom_score_adj` Setting
 Kubelet sets the Linux kernel `oom_score_adj` based on QoS class:
@@ -735,6 +750,16 @@ Worker workloads running on master nodes compete with `kube-apiserver`, `schedul
 * VPA restarts pods while HPA is attempting to add capacity, causing violent scaling thrashing.
 * **Production Best Practice:** Run **HPA for dynamic scaling**, and run **VPA in `mode: "Off"`** (recommendation mode) to continuously calculate right-sizing advice without executing restarts.
 
+### The Node Autoscaling Layer: Cluster Autoscaler vs. Karpenter
+HPA scales Pods, but when nodes run out of capacity, new Pods remain stuck in `Pending`. What scales the underlying EC2/compute nodes?
+
+| Dimension | Legacy Cluster Autoscaler (CAS) | Modern Karpenter (v1.0+) |
+| :--- | :--- | :--- |
+| **Scaling Mechanism** | Indirect: Modifies AWS Auto Scaling Group (ASG) `desired_capacity` | Direct: Bypasses ASGs; calls AWS Fleet API (`ec2:CreateFleet`) directly |
+| **Scaling Latency** | Slow (3 to 8 minutes per node group evaluation) | Ultra-fast (**30 to 45 seconds** to provision and join a node) |
+| **Bin-Packing Strategy** | Coarse: Limited to pre-configured instance types in each ASG | Fine-Grained: Evaluates all pending Pod requests and launches the exact right-sized instance type (e.g. `c6i.xlarge` or `g5.2xlarge`) |
+| **Node Consolidation** | Clunky; often refuses to terminate nodes with unmanaged pods | Native automated consolidation: Cordons, drains, and replaces underutilized nodes with cheaper/smaller instances to optimize cloud cost |
+
 ---
 
 ## 8.35 Types of Secrets and Production Secret Management
@@ -762,3 +787,4 @@ echo "cGFzc3dvcmQ=" | base64 --decode
 2. **External Secrets Operator (ESO):** Synchronize secrets directly from **AWS Secrets Manager** or HashiCorp Vault into Kubernetes memory. Never commit secrets to Git.
 3. **Secrets Store CSI Driver:** Mount secrets directly as in-memory volumes into the container filesystem from AWS Secrets Manager, ensuring sensitive tokens never touch etcd.
 4. **Mount as Files, Never Env Vars:** Environment variables leak into crash logs, core dumps, and child process inspections (`/proc/1/environ`). Always mount sensitive secrets as file volumes.
+5. **Eliminate Static Cloud Credentials via IRSA / EKS Pod Identity:** Never store `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` in Kubernetes Secrets! Use **EKS Pod Identity** or **IAM Roles for Service Accounts (IRSA)** via OIDC. The pod exchanges an ephemeral projected ServiceAccount token for temporary, short-lived AWS STS credentials directly through the AWS SDK. Zero static secrets stored in the cluster.
