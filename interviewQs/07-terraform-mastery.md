@@ -641,4 +641,3 @@ resource "aws_instance" "app_server" {
 ```
 
 ---
-*Created for senior platform, DevOps, and SRE interview readiness. Zero fluff. First principles.*
